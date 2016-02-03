@@ -131,56 +131,57 @@ if ("undefined" == typeof(SuperStart)) {
 			}, false);
 
 
-			if (SuperStart.loadInBlank() && cfg.getConfig('set-newtab-url')) {
+			/*
+			if (SuperStart.loadInBlank()) {
 				sbprefs.setCharPref('browser.newtab.url', startPage);
 			} else {
 				if (sbprefs.getCharPref('browser.newtab.url') == startPage) {
 					sbprefs.setCharPref('browser.newtab.url', 'about:newtab');
 				}
 			}
+			*/
+			onLoadInBlankChanged(null, SuperStart.loadInBlank());
 			ob.subscribe('load-in-blanktab', onLoadInBlankChanged);
-			ob.subscribe('set-newtab-url', onSetNewtabUrl);
-
-			// TODO: since I'm using 'browser.newtab.url', do we need below code?
-			if (window.TMP_BrowserOpenTab) {
-				savedOpenTab = window.TMP_BrowserOpenTab;
-				if (window.BrowserOpenTab === window.TMP_BrowserOpenTab) {
-					window.BrowserOpenTab = openTab;
-				} else {
-					window.TMP_BrowserOpenTab = openTab;
-				}
-			} else {
-				savedOpenTab = window.BrowserOpenTab;
-				window.BrowserOpenTab = openTab;
-			}
-
-			// for case where openTab() won't work
-			// for example: when set browser.tabs.closeWindowWithLastTab to false...
-			if (gBrowser._beginRemoveTab) {
-				eval("gBrowser._beginRemoveTab = " + gBrowser._beginRemoveTab.toString().replace(/this\.addTab\((("about:blank")|(BROWSER_NEW_TAB_URL))(.*)?\);/, 'this.addTab((SuperStart.loadInBlank() ? SuperStart.getStartPage() : $1)$4);'));
-			}
+			onLoadInBlankChanged('load-in-blanktab', ob.getConfig('load-in-blanktab'));
 
 			// for preloader
 			let fxVersion = Services.appinfo.version;
-			if (parseInt(fxVersion) >= 27) {
-				let preloader = SuperStart.preloader = Cu.import('resource://superstart/Preloader.jsm', {}).SuperStartPreloader;
-				preloader.init(startPage);
-				if (gBrowser.addTab) {
-					let src = 'docShellsSwapped = gBrowserNewTabPreloader.newTab(t);';
-					// TODO: must keep it the same with TabBrowser.xml::addTab()
-					let dst = 'docShellsSwapped = gBrowserNewTabPreloader.newTab(t);} ' +
-						'if (!docShellsSwapped && aURI == "' + startPage + 
-						'" && !PrivateBrowsingUtils.isWindowPrivate(window) &&' +
-						' !gMultiProcessBrowser) {' +
-							'try {' +
-								'docShellsSwapped = SuperStart.preloader.newTab(t);' +
-							'} catch(e) {' +
-								'Cu.reportError(e);' +
-							'}';
-					eval('gBrowser.addTab = ' + gBrowser.addTab.toString().replace(src, dst));
+			try {
+				// let me check it later.
+				if (false) {//parseInt(fxVersion) >= 41) {
+					let preloader = SuperStart.preloader = Cu.import('resource://superstart/Preloader.jsm', {}).SuperStartPreloader;
+//					preloader.init(startPage);
+					preloader.ensurePreloading();
+					if (gBrowser.addTab) {
+						/*
+						let src = 'docShellsSwapped = gBrowserNewTabPreloader.newTab(t);';
+						let dst = 'docShellsSwapped = gBrowserNewTabPreloader.newTab(t);} ' +
+							'if (!docShellsSwapped && aURI == "' + startPage + 
+							'" && !PrivateBrowsingUtils.isWindowPrivate(window) &&' +
+							' !gMultiProcessBrowser) {' +
+								'try {' +
+									'docShellsSwapped = SuperStart.preloader.newTab(t);' +
+								'} catch(e) {' +
+									'Cu.reportError(e);' +
+								'}';
+						*/
+						// TODO: must keep it the same with TabBrowser.xml::addTab()
+						let src = 'usingPreloadedContent = gCustomizationTabPreloader.newTab(t)';
+						let dst = 'usingPreloadedContent = gCustomizationTabPreloader.newTab(t);} ' +
+							'if (aURI == "' + startPage + '") {' +
+								'try {' +
+									'usingPreloadedContent = SuperStart.preloader.newTab(t);' +
+								'} catch(e) {' +
+									'Cu.reportError(e);' + 
+								'}';
+						eval('gBrowser.addTab = ' + gBrowser.addTab.toString().replace(src, dst));
+					} else {
+						Cu.reportError('No gBrowser.addTab()');
+					}
 				}
+			} catch (e) {
+				Cu.reportError(e);
 			}
-
 			// check version first
 			checkFirstRun();
 		}
@@ -392,13 +393,19 @@ if ("undefined" == typeof(SuperStart)) {
 		// private functions
 
 		function onLoadInBlankChanged(evt, enabled) {
-			enabled = enabled && cfg.getConfig('set-newtab-url');
-			sbprefs.setCharPref('browser.newtab.url', enabled ? cfg.getConfig('start-page') : 'about:newtab');
-		}
+			enabled = enabled;
 
-		function onSetNewtabUrl(evt, enabled) {
-			enabled = enabled && cfg.getConfig('load-in-blanktab');
-			sbprefs.setCharPref('browser.newtab.url', enabled ? cfg.getConfig('start-page') : 'about:newtab');
+			try {
+				Cu.import("resource:///modules/NewTabURL.jsm");
+				if (enabled) {
+					NewTabURL.override(cfg.getConfig('start-page'));
+				} else {
+					NewTabURL.reset();
+				}
+			} catch (e) {
+				// the old way
+				sbprefs.setCharPref('browser.newtab.url', enabled ? cfg.getConfig('start-page') : 'about:newtab');
+			}
 		}
 
 		function openTab() {
